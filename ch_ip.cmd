@@ -3,26 +3,42 @@
 rem | Author: John Salvador (With a little help from Austin Estes)
 
 
-rem | *****must be run as administrator*****
-rem | put onto desktop, execute, and then follow the prompts
+rem | HOW TO USE:
+rem | put onto desktop, run as administrator, and then follow the prompts
 rem | if you have cmd open often, put this in C:\Windows\ to run anywhere from cmd
+rem
 rem | accepts CIDR notation
 
 
 setlocal enabledelayedexpansion
+
+rem *****************Defaults*****************
+rem | Change these to suit your needs
+rem
+rem | interface_name is the name of the network adapter you want to control
+rem | default_ip and default_netmask are used when the script is called without any command line input
+set interface_name=Ethernet
+set default_ip=10.1.1.2
+set default_netmask=255.255.255.0
+
+rem ***************End Defaults***************
+
+
+
 set def_gtwy=
 set ip=
 set subnet=
 set netbits=24
 set cidr=0
 set cli=0
-rem | extract the individual octets (and subnet if cidr notation is used)
 
+rem ***********************************Section 1***********************************
+rem | extract the individual octets (and subnet if cidr notation is used)
 rem | checks if CLI input was used
 if not "%1"=="" (
 	rem | checks if dhcp is the input and turns it on if true
 	if "%1"=="dhcp" (
-		netsh interface ip set address "Ethernet" dhcp
+		netsh interface ip set address name=%interface_name% dhcp
 		if !errorlevel!==0 (
 			echo Success
 		) else (
@@ -45,20 +61,21 @@ if not "%1"=="" (
 			set cidr=1
 		)
 	)
+	rem | if %2 is empty then set it to the default netmask or else just set it to %2
 	if "x%2"=="x" (
-		set subnet=255.255.255.0
+		set subnet=%default_netmask%
 	) else (
 		set subnet=%2
 	)
 )
-rem | prompts for ip settings if not passed as command line arguments
+rem ***********************************End of section 1***********************************
 
+rem ***********************************Section 2***********************************
+rem | this section prompts for ip settings if not passed as command line arguments
 if %cli%==0 (
 	echo.
 	echo ******************************
 	echo Leave blank for default values
-	set ln="Defaults: IP=10.1.1.2 Netmask=255.255.255.0 Gateway=Based on IP and Netmask"
-	echo %ln:"=%
 	echo ******************************
 	echo.
 
@@ -67,12 +84,12 @@ if %cli%==0 (
 
 if "!ip!"=="" (
 	if %cli%==0 (
-		set ip="10.1.1.2"
+		set ip=%default_ip%
 	)
 )
 
 if "!ip!"=="dhcp" (
-	netsh interface ip set address "Ethernet" dhcp
+	netsh interface ip set address %interface_name% dhcp
 	if !errorlevel!==0 (
 		echo Success
 	) else (
@@ -95,7 +112,7 @@ if not x%ip:/=%==x%ip% (
 			set cidr=1
 		)
 		if not "x!def_gtwy!"=="x" (
-			netsh interface ip set address name="Ethernet" static addr="!ip!" gateway="!def_gtwy!"
+			netsh interface ip set address name=%interface_name% static addr="!ip!" gateway="!def_gtwy!"
 			if !errorlevel!==0 (
 				echo Success
 			) else (
@@ -106,6 +123,7 @@ if not x%ip:/=%==x%ip% (
 		
 		)
 	)
+rem | goes here if CIDR was not used
 ) else (
 	for /f "tokens=1-4* delims=." %%a in ("!ip!") do (
 		set first_oct=%%a
@@ -117,18 +135,26 @@ if not x%ip:/=%==x%ip% (
 	if %cli%==0 (
 		set /p subnet="Subnet Mask: "
 		if "x!subnet!"=="x" (
-			set subnet="255.255.255.0"
+			set subnet=%default_netmask%
 		)
 		set /p def_gtwy="Default Gateway: " 
 	)
 )
+
+
+rem ***********************************End of section 2***********************************
+
+rem ***********************************Section 3***********************************
+rem | this section is for calculating the default gateway based on the provided ip and subnet mask
+rem | the script gets to this section if no gateway was explicitly provided
+
 
 rem | set the requested ip if gateway is specified
 if %cli%==0 (
 	if not "%ip%"=="" (
 		if not "%subnet%"=="" (
 			if not "%def_gtwy%"=="" (
-				netsh interface ip set address name="Ethernet" static addr="%ip%" mask="%subnet%" gateway="%def_gtwy%"
+				netsh interface ip set address name=%interface_name% static addr="%ip%" mask="%subnet%" gateway="%def_gtwy%"
 				if !errorlevel!==0 (
 					echo Success
 				) else (
@@ -142,7 +168,7 @@ if %cli%==0 (
 ) else (
 	if %cidr%==1 (
 		if not "%2"=="" (
-			netsh interface ip set address name="Ethernet" static addr="%1" gateway="%2"
+			netsh interface ip set address name=%interface_name% static addr="%1" gateway="%2"
 			if !errorlevel!==0 (
 				echo Success
 			) else (
@@ -153,7 +179,7 @@ if %cli%==0 (
 		)
 	) else (
 		if not "%3"=="" (
-			netsh interface ip set address name="Ethernet" static addr="%1" mask="%2" gateway="%3"
+			netsh interface ip set address name=%interface_name% static addr="%1" mask="%2" gateway="%3"
 			if !errorlevel!==0 (
 				echo Success
 			) else (
@@ -248,9 +274,9 @@ set /a "all_gtwy_bits>>=8"
 set /a "gtwy1_oct=255&!all_gtwy_bits!"
 
 
-rem | set the ip
+rem | set the ip, netmask, and calculated gateway
 if %cidr%==1 (
-	netsh interface ip set address name="Ethernet" static addr="%ip%" gateway="!gtwy1_oct!.!gtwy2_oct!.!gtwy3_oct!.!gtwy4_oct!"
+	netsh interface ip set address name=%interface_name% static addr="%ip%" gateway="!gtwy1_oct!.!gtwy2_oct!.!gtwy3_oct!.!gtwy4_oct!"
 	if !errorlevel!==0 (
 		echo Success
 	) else (
@@ -259,7 +285,7 @@ if %cidr%==1 (
 	pause
 	exit /b
 ) else (
-	netsh interface ip set address name="Ethernet" static addr="%ip%" mask="%subnet%" gateway="!gtwy1_oct!.!gtwy2_oct!.!gtwy3_oct!.!gtwy4_oct!"
+	netsh interface ip set address name=%interface_name% static addr="%ip%" mask="%subnet%" gateway="!gtwy1_oct!.!gtwy2_oct!.!gtwy3_oct!.!gtwy4_oct!"
 	if !errorlevel!==0 (
 		echo Success
 	) else (
@@ -268,3 +294,4 @@ if %cidr%==1 (
 	pause
 	exit /b
 )
+rem ***********************************End of section 3***********************************
