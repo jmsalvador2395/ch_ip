@@ -17,7 +17,9 @@ rem | Change these to suit your needs
 rem
 rem | interface_name is the name of the network adapter you want to control
 rem | default_ip and default_netmask are used when the script is called without any command line input
-set interface_name=Ethernet
+
+rem | keep the interface name surrounded in quotes if there's a space in the name
+set interface_name="Ethernet"
 set default_ip=10.1.1.2
 set default_netmask=255.255.255.0
 
@@ -39,12 +41,8 @@ if not "%1"=="" (
 	rem | checks if dhcp is the input and turns it on if true
 	if "%1"=="dhcp" (
 		netsh interface ip set address name=%interface_name% dhcp
-		if !errorlevel!==0 (
-			echo Success
-		) else (
-			echo Failure
-		)
-		pause
+		call :result !errorlevel!	
+		endlocal
 		exit /b
 	)
 	set cli=1
@@ -75,7 +73,7 @@ rem | this section prompts for ip settings if not passed as command line argumen
 if %cli%==0 (
 	echo.
 	echo ******************************
-	echo Leave blank for default values
+	call :dequote_print "Leave blank for default values (%default_ip%, %default_netmask%, [based on ip and netmask])"
 	echo ******************************
 	echo.
 
@@ -90,12 +88,8 @@ if "!ip!"=="" (
 
 if "!ip!"=="dhcp" (
 	netsh interface ip set address %interface_name% dhcp
-	if !errorlevel!==0 (
-		echo Success
-	) else (
-		echo Failure
-	)
-	pause
+	call :result !errorlevel!	
+	endlocal
 	exit /b
 )
 
@@ -113,12 +107,8 @@ if not x%ip:/=%==x%ip% (
 		)
 		if not "x!def_gtwy!"=="x" (
 			netsh interface ip set address name=%interface_name% static addr="!ip!" gateway="!def_gtwy!"
-			if !errorlevel!==0 (
-				echo Success
-			) else (
-				echo Failure
-			)
-			pause
+			call :result !errorlevel!	
+			endlocal
 			exit /b
 		
 		)
@@ -155,12 +145,8 @@ if %cli%==0 (
 		if not "%subnet%"=="" (
 			if not "%def_gtwy%"=="" (
 				netsh interface ip set address name=%interface_name% static addr="%ip%" mask="%subnet%" gateway="%def_gtwy%"
-				if !errorlevel!==0 (
-					echo Success
-				) else (
-					echo Failure
-				)
-				pause
+				call :result !errorlevel!	
+				endlocal
 				exit /b
 			)
 		)
@@ -169,23 +155,15 @@ if %cli%==0 (
 	if %cidr%==1 (
 		if not "%2"=="" (
 			netsh interface ip set address name=%interface_name% static addr="%1" gateway="%2"
-			if !errorlevel!==0 (
-				echo Success
-			) else (
-				echo Failure
-			)
-			pause
+			call :result !errorlevel!	
+			endlocal
 			exit /b
 		)
 	) else (
 		if not "%3"=="" (
 			netsh interface ip set address name=%interface_name% static addr="%1" mask="%2" gateway="%3"
-			if !errorlevel!==0 (
-				echo Success
-			) else (
-				echo Failure
-			)
-			pause
+			call :result !errorlevel!	
+			endlocal
 			exit /b
 		)
 	)
@@ -231,28 +209,13 @@ for /l %%i in (1,1,%diff%) do (
 )
 
 rem | put all the ip bits into one integer
-if %cli%==1 (
-	for /f "tokens=1-4* delims=./" %%a in ("%1") do (
-		set /a all_gtwy_bits=%first_oct%
-		set /a "all_gtwy_bits<<=8"
-		set /a all_gtwy_bits+=%scnd_oct%
-		set /a "all_gtwy_bits<<=8"
-		set /a all_gtwy_bits+=%third_oct%
-		set /a "all_gtwy_bits<<=8"
-		set /a all_gtwy_bits+=%fourth_oct%
-	)
-) else (
-	for /f "tokens=1-4* delims=./" %%a in ("%ip%") do (
-		set /a all_gtwy_bits=%first_oct%
-		set /a "all_gtwy_bits<<=8"
-		set /a all_gtwy_bits+=%scnd_oct%
-		set /a "all_gtwy_bits<<=8"
-		set /a all_gtwy_bits+=%third_oct%
-		set /a "all_gtwy_bits<<=8"
-		set /a all_gtwy_bits+=%fourth_oct%
-	)
-
-)
+set /a all_gtwy_bits=%first_oct%
+set /a "all_gtwy_bits<<=8"
+set /a all_gtwy_bits+=%scnd_oct%
+set /a "all_gtwy_bits<<=8"
+set /a all_gtwy_bits+=%third_oct%
+set /a "all_gtwy_bits<<=8"
+set /a all_gtwy_bits+=%fourth_oct%
 
 rem | calculate the network portion of the gateway
 set /a "all_gtwy_bits=!all_mask_bits!&!all_gtwy_bits!"
@@ -260,6 +223,9 @@ set /a "all_gtwy_bits=!all_mask_bits!&!all_gtwy_bits!"
 rem | calculate the host portion of the gateway
 set /a "gtwy_host_bits=-1^^!all_mask_bits!"
 set /a all_gtwy_bits+=!gtwy_host_bits!
+
+rem | i only subtract if the netmask is less than /31
+rem | after that then i figure it's less correct to subtract 1 than to keep the address at broadcast
 if %netbits% lss 31 (
 	set /a all_gtwy_bits-=1
 )
@@ -277,21 +243,36 @@ set /a "gtwy1_oct=255&!all_gtwy_bits!"
 rem | set the ip, netmask, and calculated gateway
 if %cidr%==1 (
 	netsh interface ip set address name=%interface_name% static addr="%ip%" gateway="!gtwy1_oct!.!gtwy2_oct!.!gtwy3_oct!.!gtwy4_oct!"
-	if !errorlevel!==0 (
-		echo Success
-	) else (
-		echo Failure
-	)
-	pause
+	call :result !errorlevel!	
+	endlocal
 	exit /b
 ) else (
 	netsh interface ip set address name=%interface_name% static addr="%ip%" mask="%subnet%" gateway="!gtwy1_oct!.!gtwy2_oct!.!gtwy3_oct!.!gtwy4_oct!"
-	if !errorlevel!==0 (
-		echo Success
-	) else (
-		echo Failure
-	)
-	pause
+	call :result !errorlevel!
+	endlocal
 	exit /b
 )
 rem ***********************************End of section 3***********************************
+
+rem ***********************************Functions***********************************
+
+rem | just using this to print the result
+:result
+setlocal
+if %~1==0 (
+	echo Success
+) else (
+	echo Failure
+)
+pause
+endlocal
+exit /b
+
+rem | passing a string with quotes into a function strips the quotes.
+rem | this is just a workaround to print special characters
+:dequote_print
+setlocal
+echo %~1
+endlocal
+exit /b
+rem *******************************************************************************
